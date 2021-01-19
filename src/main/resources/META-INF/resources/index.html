@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <link rel="stylesheet" href="/webjars/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/webjars/font-awesome/css/all.min.css">
+    <link rel="stylesheet" href="/webjars/bootstrap-table/bootstrap-table.min.css">
+    <link rel="stylesheet" href="/webjars/colors/css/colors.min.css">
+
+    <style>
+        .table th,
+        .table td {
+            padding: 1px 1px;
+        }
+    </style>
+
+    <script src="/webjars/jquery/jquery.min.js"></script>
+    <script src="/webjars/popper.js/umd/popper.min.js"></script>
+    <script src="/webjars/bootstrap/js/bootstrap.min.js"></script>
+    <script src="/webjars/bootstrap-table/bootstrap-table.js"></script>
+    <script src="/webjars/bootstrap-table/extensions/auto-refresh/bootstrap-table-auto-refresh.js"></script>
+
+    <title>Jobs</title>
+</head>
+<body>
+<div style="text-align: center;">
+    <h3>Jobs</h3>
+</div>
+
+<div id="toolbar">
+    <button style="font-size: small; margin-right:25px;" id="remove" class="btn btn-danger" disabled>
+        <i style="font-size: small" class="fa fa-trash"></i>
+    </button>
+</div>
+
+<table id="table"></table>
+
+<script>
+    const $table = $('#table')
+    const $remove = $('#remove')
+    var selections = []
+
+    function stopJobs(ids) {
+        if (Array.isArray(ids) && ids.length) {
+            let url = `/v1/jobs/`
+            let xhttp = new XMLHttpRequest();
+            xhttp.open("DELETE", url, true);
+            xhttp.setRequestHeader("Accept", "application/json");
+            xhttp.setRequestHeader("Content-Type", "application/json");
+            xhttp.send(JSON.stringify(ids));
+        }
+    }
+
+    function getSortField(name) {
+        if ("rankType" === name) {
+            return "rank";
+        }
+        return name;
+    }
+
+    function customSort(sortName, sortOrder, data) {
+        const order = sortOrder === 'desc' ? -1 : 1
+        const sortField = getSortField(sortName)
+        console.log("Sorting field: ", sortField)
+        data.sort((a, b) => {
+            var aa = a[sortField]
+            var bb = b[sortField]
+            if (aa < bb) {
+                return order * -1
+            }
+            if (aa > bb) {
+                return order
+            }
+            return 0
+        })
+    }
+
+    function rowStyle(row, index) {
+        cl = 'bg-lime';
+        if ( row.rank < 0 ) {
+            cl = 'bg-red';
+        }
+        return {
+            classes: cl
+        }
+    }
+
+    function getIdSelections() {
+        return $.map($table.bootstrapTable('getSelections'), (row) => {
+            return row.id
+        })
+    }
+
+    function responseHandler(res) {
+        $.each(res.rows, (i, row) => {
+            row.state = $.inArray(row.id, selections) !== -1
+        })
+        return res
+    }
+
+    function rankFormatter(value, row, index) {
+        return ( row.rank < 0 ) ? 'Bad' : 'Good';
+    }
+
+    function operateFormatter(value, row, index) {
+        return [
+            '<a class="remove" href="javascript:void(0)" title="Remove">',
+            '<i style="font-size: small" class="fa fa-trash"></i>',
+            '</a>'
+        ].join('')
+    }
+
+    window.operateEvents = {
+        'click .remove': (e, value, row, index) => {
+            $table.bootstrapTable('remove', {
+                field: 'id',
+                values: [row.id]
+            })
+            stopJobs([row.id])
+            console.log("removing single", row.id)
+        }
+    }
+
+    function buttons() {
+        return {
+            btnRemoveSelectedRows: {
+                icon: 'fa-plus'
+            }
+        }
+    }
+
+    function initTable() {
+        $table.bootstrapTable('destroy').bootstrapTable({
+            // height: 750,
+
+            toolbar: "#toolbar",
+
+            iconSize: "sm",
+            search: true,
+            searchAlign: "left",
+            visibleSearch: true,
+
+            autoRefresh: true,
+            autoRefreshInterval: 25,
+            autoRefreshSilent: true,
+            showRefresh: true,
+            autoRefreshStatus: true,
+
+            customSort: "customSort",
+            rowStyle: "rowStyle",
+            // clickToSelect :true,
+            idField: "name",
+            url: "/v1/jobs",
+            // classes: ["table-bordered", "table-hover", "table-sm"],
+            responseHandler: "responseHandler",
+            columns: [
+                {
+                    field: 'state',
+                    checkbox: true,
+                    align: 'center',
+                    valign: 'middle'
+                },
+                {
+                    field: 'id',
+                    title: 'Id',
+                    align: 'center',
+                    valign: 'middle',
+                    visible: false
+                },
+                {
+                    field: 'name',
+                    title: 'Item Name',
+                    sortable: true,
+                    align: 'center'
+                },
+                {
+                    field: 'rankType',
+                    title: 'Rank',
+                    align: 'center',
+                    valign: 'middle',
+                    formatter: rankFormatter,
+                    sortable: true
+                },
+                {
+                    field: 'rank',
+                    title: 'RankValue',
+                    align: 'center',
+                    valign: 'middle',
+                    visible: false
+                },
+                {
+                    field: 'notes',
+                    title: 'Notes',
+                    align: 'center',
+                },
+                {
+                    field: 'operate',
+                    align: 'center',
+                    clickToSelect: false,
+                    events: window.operateEvents,
+                    formatter: operateFormatter
+                }
+            ]
+        })
+        $table.on('check.bs.table uncheck.bs.table check-all.bs.table uncheck-all.bs.table', () => {
+                $remove.prop('disabled', !$table.bootstrapTable('getSelections').length)
+
+                // save your data, here just save the current page
+                selections = getIdSelections()
+                // push or splice the selections if you want to save all data selections
+            })
+        $table.on('all.bs.table', function (e, name, args) {
+            console.log(name, args)
+        })
+        $remove.click(() => {
+            const ids = getIdSelections()
+            stopJobs(ids)
+            $table.bootstrapTable('remove', {
+                field: 'id',
+                values: ids
+            })
+            console.log("removing many", ids)
+            $remove.prop('disabled', true)
+        })
+    }
+
+    $( () => {
+        initTable()
+    })
+</script>
+
+
+</body>
+</html>
